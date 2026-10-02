@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#677783">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Netwerk">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Netwerk</title>
+<style>
+:root{
+  --bg:#4b5c69; --bar:#677783; --node:#5d6e7a; --bubble:#687985;
+  --y:#f7c400; --teal:#3db6a6; --ink:#fff; --muted:#c3cdd4; --panel:#3e4d58;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:"Segoe UI",Roboto,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  overscroll-behavior:none;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+button:disabled{cursor:default}
+svg{display:block}
+
+.screen{position:fixed;left:0;right:0;top:var(--app-top,0);height:var(--app-h,100dvh);
+  display:flex;flex-direction:column;background:var(--bg)}
+.screen[hidden]{display:none}
+
+/* ---------- top bar ---------- */
+.topbar{display:flex;align-items:center;gap:6px;background:var(--bar);
+  padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;min-height:64px;flex:none}
+.topbar h1{flex:1;margin:0 4px;font-size:22px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iconbtn{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;flex:none}
+.iconbtn svg{width:28px;height:28px}
+.iconbtn:active{background:rgba(255,255,255,.14)}
+
+/* ---------- login ---------- */
+#login{overflow-y:auto}
+.login-wrap{margin:auto;width:100%;max-width:340px;padding:32px 24px calc(env(safe-area-inset-bottom) + 24px);text-align:center}
+.logo{width:120px;height:120px;border-radius:50%;background:#fff;color:var(--bg);display:grid;place-items:center;margin:0 auto 14px}
+.logo svg{width:72%;height:72%}
+.app-name{font-weight:300;font-size:30px;margin:0 0 26px}
+#loginForm input{display:block;width:100%;border:0;border-radius:3px;padding:13px 12px;font:inherit;font-size:16px;margin-bottom:12px;color:#222}
+.primary{background:var(--teal);color:#fff;border-radius:24px;padding:12px 26px;font-size:17px;min-width:140px}
+.primary:active{filter:brightness(.92)}
+.links{display:flex;justify-content:space-between;margin-top:22px;font-size:14px;color:var(--muted)}
+.links button{text-decoration:underline}
+.proto{margin-top:34px;font-size:12.5px;color:var(--muted);line-height:1.7;border-top:1px solid rgba(255,255,255,.12);padding-top:14px}
+.proto label{display:inline-flex;align-items:center;gap:6px}
+.proto button{text-decoration:underline}
+
+/* ---------- network ---------- */
+#stage{flex:1;position:relative;overflow:hidden;touch-action:none}
+#lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#lines line{stroke:rgba(255,255,255,.18);stroke-width:2}
+.hint{position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:12px;color:var(--muted);pointer-events:none;padding:0 12px}
+.node{position:absolute;border-radius:50%;background:var(--node);color:#fff;display:grid;place-items:center;
+  transform:translate(calc(-50% + var(--dx,0px)),calc(-50% + var(--dy,0px)));
+  transition:transform .28s cubic-bezier(.2,.8,.3,1),box-shadow .2s;
+  touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;
+  box-shadow:0 2px 8px rgba(0,0,0,.28)}
+.node svg{width:60%;height:60%;pointer-events:none}
+.node.project{background:#fff;color:var(--bg)}
+.node.user{border:2px solid rgba(255,255,255,.55)}
+.node.center{cursor:default}
+.node.center.user{border-width:3px}
+.node .label{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);font-size:13px;color:#fff;
+  white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px rgba(0,0,0,.45);pointer-events:none}
+.node.center .label{font-size:16px;font-weight:600;max-width:200px}
+.node.me .label{color:var(--y)}
+.node.notmine{opacity:.6}
+.node.sel{box-shadow:0 0 0 4px var(--y),0 2px 8px rgba(0,0,0,.3)}
+.node.dragging{transition:box-shadow .2s;z-index:10;box-shadow:0 10px 24px rgba(0,0,0,.45);cursor:grabbing}
+.node.center.target{box-shadow:0 0 0 7px var(--teal),0 2px 8px rgba(0,0,0,.3)}
+.badge{position:absolute;top:-3px;right:-3px;min-width:24px;height:24px;padding:0 7px;border-radius:12px;background:var(--y);
+  color:#2c3a44;font-size:13px;font-weight:700;display:grid;place-items:center;font-style:normal;pointer-events:none}
+.node.in{animation:pop .42s cubic-bezier(.2,.8,.3,1.25) backwards;animation-delay:var(--d,0ms)}
+@keyframes pop{from{opacity:0;transform:translate(-50%,-50%) scale(.25)}}
+
+.actions{display:flex;justify-content:space-around;background:var(--bar);padding:6px 4px calc(env(safe-area-inset-bottom) + 6px);flex:none}
+.act{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;width:20%;padding:6px 2px;border-radius:10px;position:relative;line-height:1.15;text-align:center}
+.act .i svg{width:27px;height:27px}
+.act:active:not(:disabled){background:rgba(255,255,255,.14)}
+.act:disabled{opacity:.35}
+.act .badge{top:1px;right:calc(50% - 26px);height:20px;min-width:20px;font-size:11.5px;padding:0 5px}
+
+/* ---------- chat ---------- */
+.proj{width:46px;height:46px;border-radius:50%;background:#fff;color:var(--bg);display:grid;place-items:center;flex:none}
+.proj svg{width:72%;height:72%}
+#msgs{flex:1;overflow-y:auto;padding:10px 10px 8px;-webkit-overflow-scrolling:touch}
+.day{text-align:center;color:var(--y);font-size:13px;margin:16px 0 6px}
+.row{display:flex;align-items:center;gap:4px;margin:10px 0}
+.row.mine{justify-content:flex-end}
+.bubble{position:relative;background:var(--bubble);border-radius:10px;padding:7px 13px 10px;max-width:76%;min-width:120px}
+.row.theirs .bubble{margin-left:12px;border-top-left-radius:0}
+.row.mine .bubble{margin-right:12px;border-top-right-radius:0}
+.row.theirs .bubble::before,.row.mine .bubble::before{content:"";position:absolute;top:0;border-top:14px solid var(--bubble)}
+.row.theirs .bubble::before{left:-12px;border-left:12px solid transparent}
+.row.mine .bubble::before{right:-12px;border-right:12px solid transparent}
+.bubble.new{box-shadow:inset 4px 0 0 var(--y)}
+.meta{font-size:12.5px;color:var(--y);margin-bottom:3px}
+.meta .time{color:#fff;opacity:.9;margin-right:6px}
+.meta .arr{margin:0 4px}
+.text{font-size:16px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble img{display:block;max-width:100%;max-height:260px;border-radius:6px;margin-top:6px;cursor:zoom-in}
+.reply{width:42px;height:42px;flex:none;display:grid;place-items:center;border-radius:50%;opacity:.8}
+.reply svg{width:30px;height:30px}
+.reply:active{background:rgba(255,255,255,.14)}
+#typing{font-size:12.5px;color:var(--muted);padding:0 16px 4px;font-style:italic}
+.compose{padding:4px 12px calc(env(safe-area-inset-bottom) + 8px);border-top:1px solid rgba(255,255,255,.08);flex:none}
+.to-line{color:var(--y);font-size:13.5px;padding:6px 2px;display:flex;align-items:center;gap:6px;text-align:left;max-width:100%}
+.to-line .names{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.to-line svg{width:15px;height:15px;flex:none;opacity:.85}
+#text{width:100%;min-height:52px;max-height:140px;border:0;border-radius:2px;padding:10px;font:inherit;font-size:16px;resize:none;color:#222;background:#fff;display:block}
+#preview{display:flex;gap:8px}
+#preview:not(:empty){margin-top:8px}
+#preview .pv{position:relative}
+#preview img{height:72px;border-radius:4px;display:block}
+#preview button{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;background:#222;display:grid;place-items:center}
+#preview button svg{width:14px;height:14px}
+.compose-tools{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:6px}
+.tool{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;font-size:14px}
+.tool svg{width:34px;height:34px}
+.tool:active{background:rgba(255,255,255,.14)}
+.tool .lbl{opacity:.85}
+
+/* ---------- modal & toast ---------- */
+#modal{position:fixed;inset:0;background:rgba(20,28,34,.55);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+#modal[hidden]{display:none}
+.panel{background:var(--panel);width:100%;max-width:480px;max-height:85%;overflow-y:auto;border-radius:16px 16px 0 0;
+  padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+.panel h2{margin:0 0 12px;font-size:18px;font-weight:600}
+.panel .sub{font-size:13px;color:var(--muted);margin:14px 0 6px}
+.list{display:flex;flex-direction:column;gap:2px}
+.item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 10px;border-radius:8px;background:rgba(255,255,255,.05)}
+.item.check{justify-content:flex-start;cursor:pointer}
+.item.check input{width:20px;height:20px;accent-color:var(--teal)}
+.item.removed span{text-decoration:line-through;opacity:.5}
+.item .rm{font-size:13px;color:var(--y)}
+.item .cnt{margin-left:auto}
+.pickbtn{width:100%;text-align:left}
+.fld{display:block;font-size:13px;color:var(--muted);margin-top:14px}
+.fld input{display:block;width:100%;margin-top:6px;border:0;border-radius:4px;padding:11px;font:inherit;font-size:16px;color:#222}
+.btns{display:flex;justify-content:flex-end;gap:12px;margin-top:18px}
+.btns > button:not(.primary){padding:12px 16px;color:var(--muted)}
+.viewer img{width:100%;border-radius:6px}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 96px);transform:translate(-50%,20px);opacity:0;
+  background:#22303a;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;max-width:88%;text-align:center;
+  transition:.25s;pointer-events:none;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<section id="login" class="screen">
+  <div class="login-wrap">
+    <div class="logo" data-icon="group"></div>
+    <h1 class="app-name">Netwerk</h1>
+    <form id="loginForm" autocomplete="on">
+      <input type="email" placeholder="Email" autocomplete="username">
+      <input type="password" placeholder="Wachtwoord" autocomplete="current-password">
+      <button class="primary" type="submit">log in</button>
+    </form>
+    <div class="links">
+      <button id="forgot" type="button">wachtwoord vergeten</button>
+      <button id="newUser" type="button">nieuwe gebruiker</button>
+    </div>
+    <div class="proto">
+      Prototype: elke invoer logt in als Matthijs.<br>
+      <label><input type="checkbox" id="simToggle"> gesimuleerde antwoorden</label><br>
+      <button id="reset" type="button">demogegevens resetten</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ NETWORK ============ -->
+<section id="network" class="screen" hidden>
+  <header class="topbar">
+    <button class="iconbtn" id="navBack" aria-label="terug" data-icon="back"></button>
+    <h1 id="netTitle"></h1>
+    <button class="iconbtn" id="navHome" aria-label="naar mij" data-icon="home"></button>
+    <button class="iconbtn" id="logout" aria-label="log uit" data-icon="logout"></button>
+  </header>
+  <div id="stage"></div>
+  <nav class="actions">
+    <button class="act" id="aSel"><i class="i" data-icon="selectAll"></i><span class="l">(de)selecteer allen</span></button>
+    <button class="act" id="aEdit"><i class="i" data-icon="edit"></i><span class="l"></span></button>
+    <button class="act" id="aAdd"><i class="i" data-icon="plus"></i><span class="l"></span></button>
+    <button class="act" id="aCall"><i class="i"></i><span class="l"></span></button>
+    <button class="act" id="aMsg"><i class="i" data-icon="msg"></i><span class="l"></span><b class="badge" hidden></b></button>
+  </nav>
+</section>
+
+<!-- ============ CHAT ============ -->
+<section id="chat" class="screen" hidden>
+  <header class="topbar">
+    <button class="iconbtn" id="chatBack" aria-label="terug" data-icon="back"></button>
+    <div class="proj" data-icon="group"></div>
+    <h1 id="chatTitle"></h1>
+  </header>
+  <div id="msgs"></div>
+  <div id="typing" hidden></div>
+  <div class="compose">
+    <button class="to-line" id="toLine" type="button"></button>
+    <textarea id="text" rows="2" placeholder="Typ een bericht"></textarea>
+    <div id="preview"></div>
+    <div class="compose-tools">
+      <button class="tool" id="camBtn" type="button" aria-label="voeg foto in"><span class="lbl">voeg foto in</span><span data-icon="camera"></span></button>
+      <button class="tool" id="sendBtn" type="button" aria-label="verzend"><span data-icon="send"></span></button>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+  </div>
+</section>
+
+<div id="modal" hidden></div>
+<div id="toast" role="status"></div>
+
+<script>
+/* ================= icons ================= */
+const P = {
+  person:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7.2 8-7.2s8 2.8 8 7.2z"/>',
+  group:'<circle cx="12" cy="6.3" r="3.1"/><circle cx="5.4" cy="9.6" r="2.5"/><circle cx="18.6" cy="9.6" r="2.5"/><path d="M6.8 20.5c0-3.8 2.3-6.8 5.2-6.8s5.2 3 5.2 6.8z"/><path d="M.8 20.5c0-3.2 1.9-5.7 4.6-5.7 1 0 1.9.3 2.6.9-1.2 1.4-1.9 3-2 4.8z"/><path d="M23.2 20.5c0-3.2-1.9-5.7-4.6-5.7-1 0-1.9.3-2.6.9 1.2 1.4 1.9 3 2 4.8z"/>',
+  back:'<path d="M21 11H7.8l5-5L11.4 4.6 4 12l7.4 7.4 1.4-1.4-5-5H21z"/>',
+  home:'<path d="M12 3 2 12h3v9h5v-6h4v6h5v-9h3z"/>',
+  logout:'<path d="M10 17l1.4 1.4L17.8 12l-6.4-6.4L10 7l4 4H3v2h11zM20 3h-8v2h8v14h-8v2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/>',
+  phone:'<path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/>',
+  video:'<path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11z"/>',
+  msg:'<path d="M6 4h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9.5L4 21.5V6a2 2 0 0 1 2-2z"/>',
+  plus:'<path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/>',
+  edit:'<path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"/>',
+  selectAll:'<path d="M18 7l-1.4-1.4-6.3 6.3 1.4 1.4zm4.2-1.4L11.7 16.2 7.5 12l-1.4 1.4 5.6 5.6 12-12zM.4 13.4 6 19l1.4-1.4L1.8 12z"/>',
+  reply:'<path d="M12.5 8c-2.65 0-5.05 1-6.9 2.6L2 7v9h9l-3.6-3.6A8 8 0 0 1 20.1 16l2.4-.8A10.5 10.5 0 0 0 12.5 8z"/>',
+  camera:'<path fill-rule="evenodd" d="M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>',
+  send:'<path d="M2 21 23 12 2 3v7l15 2-15 2z"/>',
+  close:'<path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/>'
+};
+const ic = n => `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${P[n]}</svg>`;
+document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = ic(el.dataset.icon));
+
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uniq = a => [...new Set(a)];
+const pick = a => a[Math.random() * a.length | 0];
+const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const hm = ts => new Date(ts).toLocaleTimeString('nl-NL', {hour:'numeric', minute:'2-digit'});
+function dayLabel(ts){
+  const d = new Date(ts), t = new Date(), y = new Date(); y.setDate(t.getDate() - 1);
+  if (d.toDateString() === t.toDateString()) return 'vandaag';
+  if (d.toDateString() === y.toDateString()) return 'gisteren';
+  return d.toLocaleDateString('nl-NL', {day:'numeric', month:'long', year:'numeric'});
+}
+let toastT;
+function toast(t){ const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 2800); }
+
+/* ================= data ================= */
+const STORE = 'netwerk-proto-v1';
+function seed(){
+  const D = (daysAgo, h, m) => { const d = new Date(); d.setDate(d.getDate() - daysAgo); d.setHours(h, m, 0, 0); return d.getTime(); };
+  const ago = min => Date.now() - min * 60000;
+  let n = 0;
+  const M = (project, ts, from, to, text, read = true) =>
+    ({id:'m' + (++n), project, ts, from, to, text, readBy: read ? uniq([from, ...to]) : [from]});
+  return {
+    me:'u1', loggedIn:false, simulate:true,
+    users:{ u1:{name:'Matthijs'}, u2:{name:'Jan-Eric'}, u3:{name:'Johan'}, u4:{name:'Karen'},
+            u5:{name:'Patrick'}, u6:{name:'Gert'}, u7:{name:'Liesbeth'}, u8:{name:'Sanne'} },
+    projects:{
+      p1:{name:'Bernhoven',    members:['u1','u2','u3','u4','u5']},
+      p2:{name:'ASz ICTU',     members:['u1','u6','u3','u8']},
+      p3:{name:'Antonius A&K', members:['u1','u4','u7']},
+      p4:{name:'Rijnstate',    members:['u1','u2','u6']},
+      p5:{name:'Gelre',        members:['u3','u5','u8']}
+    },
+    messages:[
+      M('p1', D(5,9,31),  'u3', ['u1','u4'], 'Dat was een goede bijeenkomst! Hopen dat het uitwerken ook zo soepel gaat!'),
+      M('p1', D(5,9,33),  'u1', ['u3','u4'], 'Ging zeker goed, was heel tevreden met de uitkomsten. Volgende week verder.'),
+      M('p1', D(5,9,34),  'u1', ['u3','u4'], 'Oh, ben volgende week op vakantie.'),
+      M('p1', D(5,9,35),  'u1', ['u3','u4'], 'Dan moet het maar een andere keer. Ik zal contact opnemen om een nieuwe afspraak te maken.'),
+      M('p1', D(5,10,15), 'u3', ['u1','u4'], 'Dat is goed. Bel maar even met Liesbeth, zij kan bij al onze agenda’s.'),
+      M('p1', D(1,16,44), 'u1', ['u3','u4'], 'OK, doe ik.'),
+      M('p1', ago(95),    'u1', ['u3','u4'], 'Heb ik gedaan. Was nog een heel gedoe om een goed tijdstip te vinden.'),
+      M('p1', ago(40),    'u3', ['u1','u4'], 'Mooi! Welk tijdstip is het geworden?', false),
+      M('p1', ago(32),    'u4', ['u1','u3'], 'Ik zie hem al in mijn agenda staan: donderdag 14:00. Prima!', false),
+      M('p1', ago(12),    'u2', ['u1','u5'], 'Zullen we de rapportage vrijdag even doorlopen?', false),
+      M('p2', D(2,11,5),  'u1', ['u6','u3'], 'Hierbij de planning voor de komende sprint.'),
+      M('p2', ago(180),   'u6', ['u1'],      'Dank je. Ik heb nog een vraag over de architectuurplaat.', false),
+      M('p2', ago(170),   'u6', ['u1','u3'], 'Kunnen we morgen even bellen?', false),
+      M('p3', D(3,14,20), 'u7', ['u1','u4'], 'Het verslag van vorige week staat op de gedeelde schijf.'),
+      M('p3', D(3,15,2),  'u1', ['u7','u4'], 'Top, dank je wel!')
+    ]
+  };
+}
+let db;
+try { db = JSON.parse(localStorage.getItem(STORE)); } catch(e) {}
+if (!db || !db.users || !db.projects) db = seed();
+function save(){ try { localStorage.setItem(STORE, JSON.stringify(db)); } catch(e) { toast('Opslaan mislukt (opslag vol?)'); } }
+
+const uname = id => db.users[id] ? db.users[id].name : '?';
+const meName = id => id === db.me ? 'Me' : uname(id);
+const userProjects = u => Object.keys(db.projects).filter(p => db.projects[p].members.includes(u));
+const involvesMe = m => m.from === db.me || m.to.includes(db.me);
+const isUnread = m => m.to.includes(db.me) && !(m.readBy || []).includes(db.me);
+const unread = (pid, from) => db.messages.filter(m => (!pid || m.project === pid) && isUnread(m) && (!from || m.from === from)).length;
+
+/* ================= view state ================= */
+let center = {type:'user', id:db.me};
+let hist = [];
+const sel = new Set();
+let chat = null;
+let lastTap = {};
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(s => s.hidden = s.id !== id);
+  if (id === 'network') requestAnimationFrame(() => renderNetwork(true));
+}
+
+/* ================= network ================= */
+function ringItems(){
+  if (center.type === 'project') return (db.projects[center.id].members).map(id => ({type:'user', id}));
+  return userProjects(center.id).map(id => ({type:'project', id}));
+}
+function badgeFor(it){
+  if (center.type === 'project') return it.id === db.me ? 0 : unread(center.id, it.id);
+  if (center.id === db.me) return unread(it.id);
+  return unread(it.id, center.id);
+}
+function makeNode(it, isCenter, size){
+  const el = document.createElement('div');
+  const isMe = it.type === 'user' && it.id === db.me;
+  el.className = `node ${it.type}${isCenter ? ' center' : ''}${isMe ? ' me' : ''}${!isCenter && sel.has(it.id) ? ' sel' : ''}`;
+  if (it.type === 'project' && !db.projects[it.id].members.includes(db.me)) el.classList.add('notmine');
+  el.style.width = el.style.height = size + 'px';
+  const label = it.type === 'project' ? db.projects[it.id].name : uname(it.id);
+  const b = isCenter ? 0 : badgeFor(it);
+  el.innerHTML = ic(it.type === 'project' ? 'group' : 'person') + `<span class="label">${esc(label)}</span>` + (b ? `<b class="badge">${b}</b>` : '');
+  return el;
+}
+function renderNetwork(anim){
+  const stage = $('#stage');
+  if (!stage.clientWidth) return;
+  if ((center.type === 'project' && !db.projects[center.id]) || (center.type === 'user' && !db.users[center.id])) center = {type:'user', id:db.me};
+  const W = stage.clientWidth, H = stage.clientHeight - 24;
+  const S = Math.min(W, H), cx = W / 2, cy = H / 2 + 4;
+  const items = ringItems(), n = items.length;
+  const R0 = S / 2 - 8;
+  let ns = Math.min(84, S * 0.19);
+  if (n > 1) ns = Math.min(ns, 2 * R0 * 0.8 * Math.sin(Math.PI / n) * 0.75);
+  ns = Math.max(44, ns);
+  const R = R0 - ns / 2 - 18;
+  const cs = Math.min(S * 0.3, 128);
+  const pos = items.map((_, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / n; return [cx + R * Math.cos(a), cy + R * Math.sin(a)]; });
+
+  let hint;
+  if (center.type === 'project') hint = 'Tik om te selecteren · sleep een persoon naar het midden';
+  else hint = n ? 'Sleep een project naar het midden · tik om te selecteren' : 'Nog geen projecten — gebruik +';
+  stage.innerHTML = `<svg id="lines">${pos.map(([x, y]) => `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>`).join('')}</svg><div class="hint">${hint}</div>`;
+
+  const c = makeNode(center, true, cs);
+  c.style.left = cx + 'px'; c.style.top = cy + 'px';
+  if (anim) c.classList.add('in');
+  stage.append(c);
+  items.forEach((it, i) => {
+    const el = makeNode(it, false, ns);
+    el.style.left = pos[i][0] + 'px'; el.style.top = pos[i][1] + 'px';
+    if (anim) { el.classList.add('in'); el.style.setProperty('--d', (80 + i * 35) + 'ms'); }
+    stage.append(el);
+    attachDrag(el, it, c);
+  });
+  updateBar();
+}
+function overCenter(el, c){
+  const a = el.getBoundingClientRect(), b = c.getBoundingClientRect();
+  return Math.hypot(a.x + a.width / 2 - (b.x + b.width / 2), a.y + a.height / 2 - (b.y + b.height / 2)) < b.width / 2 + 10;
+}
+function attachDrag(el, it, c){
+  let sx, sy, drag = false, pid = null;
+  el.addEventListener('pointerdown', e => {
+    pid = e.pointerId; sx = e.clientX; sy = e.clientY; drag = false;
+    el.setPointerCapture(pid);
+  });
+  el.addEventListener('pointermove', e => {
+    if (e.pointerId !== pid) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!drag && Math.hypot(dx, dy) > 8) { drag = true; el.classList.add('dragging'); }
+    if (drag) {
+      el.style.setProperty('--dx', dx + 'px'); el.style.setProperty('--dy', dy + 'px');
+      c.classList.toggle('target', overCenter(el, c));
+    }
+  });
+  const reset = () => { el.classList.remove('dragging'); c.classList.remove('target'); el.style.setProperty('--dx', '0px'); el.style.setProperty('--dy', '0px'); };
+  el.addEventListener('pointerup', e => {
+    if (e.pointerId !== pid) return;
+    pid = null;
+    if (drag) { const hit = overCenter(el, c); if (hit) go(it); else reset(); }
+    else tap(it, el);
+  });
+  el.addEventListener('pointercancel', () => { pid = null; reset(); });
+}
+function tap(it, el){
+  const now = Date.now();
+  if (lastTap.id === it.id && now - lastTap.t < 320) { lastTap = {}; go(it); return; }   // double tap = centre
+  lastTap = {id:it.id, t:now};
+  if (it.type === 'user' && it.id === db.me) return;
+  if (sel.has(it.id)) sel.delete(it.id); else sel.add(it.id);
+  el.classList.toggle('sel', sel.has(it.id));
+  updateBar();
+}
+function go(it){
+  hist.push(center);
+  center = {type:it.type, id:it.id};
+  sel.clear();
+  history.pushState({v:'net'}, '');
+  renderNetwork(true);
+}
+function goBack(){
+  if (!hist.length) return;
+  center = hist.pop(); sel.clear(); renderNetwork(true);
+}
+function callTargets(){
+  if (center.type === 'project') return [...sel].filter(u => db.users[u]);
+  if (center.id !== db.me) return [center.id];
+  return [];
+}
+function updateBar(){
+  const isProj = center.type === 'project';
+  const isMe = !isProj && center.id === db.me;
+  $('#netTitle').textContent = isProj ? db.projects[center.id].name : isMe ? 'Mijn netwerk' : uname(center.id);
+  $('#navBack').style.visibility = hist.length ? 'visible' : 'hidden';
+  $('#navHome').style.visibility = isMe && !hist.length ? 'hidden' : 'visible';
+
+  const selectable = ringItems().filter(it => !(it.type === 'user' && it.id === db.me));
+  $('#aSel').disabled = !selectable.length;
+  $('#aEdit .l').textContent = isProj ? 'bewerk project' : 'bewerk persoon';
+  $('#aAdd .l').textContent = isProj ? 'voeg persoon toe' : 'voeg project toe';
+
+  const people = callTargets();
+  $('#aCall').disabled = !people.length;
+  $('#aCall .i').innerHTML = ic(people.length > 1 ? 'video' : 'phone');
+  $('#aCall .l').textContent = people.length > 1 ? 'skype' : 'bel';
+
+  $('#aMsg .l').textContent = sel.size ? 'stuur bericht' : 'open berichten';
+  const cnt = isProj ? unread(center.id) : isMe ? unread() : unread(null, center.id);
+  const b = $('#aMsg .badge'); b.hidden = !cnt; b.textContent = cnt;
+}
+
+/* ---- action buttons ---- */
+$('#aSel').onclick = () => {
+  const ids = ringItems().filter(it => !(it.type === 'user' && it.id === db.me)).map(it => it.id);
+  const all = ids.length && ids.every(id => sel.has(id));
+  sel.clear(); if (!all) ids.forEach(id => sel.add(id));
+  renderNetwork(false);
+};
+$('#aCall').onclick = () => {
+  const p = callTargets(); if (!p.length) return;
+  const names = p.map(uname).join(', ');
+  toast(p.length > 1 ? `Skype-gesprek met ${names}… (prototype)` : `Bellen met ${names}… (prototype)`);
+};
+$('#aEdit').onclick = () => center.type === 'project' ? editProject(center.id) : editPerson(center.id);
+$('#aAdd').onclick = () => center.type === 'project' ? addPerson(center.id) : addProject(center.id);
+$('#aMsg').onclick = () => {
+  if (center.type === 'project') { openChat(center.id, [...sel]); return; }
+  if (center.id === db.me) {
+    const ps = [...sel];
+    if (ps.length === 1) openChat(ps[0]);
+    else if (ps.length > 1) toast('Selecteer één project');
+    else pickProject(userProjects(db.me), pid => openChat(pid));
+    return;
+  }
+  const shared = userProjects(center.id).filter(p => db.projects[p].members.includes(db.me));
+  const person = center.id;
+  if (sel.size === 1) {
+    const p = [...sel][0];
+    if (!shared.includes(p)) { toast('Je neemt geen deel aan dit project'); return; }
+    openChat(p, [person]); return;
+  }
+  if (!shared.length) toast(`Geen gedeeld project met ${uname(person)}`);
+  else if (shared.length === 1) openChat(shared[0], [person]);
+  else pickProject(shared, pid => openChat(pid, [person]), person);
+};
+
+$('#navBack').onclick = () => history.back();
+$('#navHome').onclick = () => { center = {type:'user', id:db.me}; hist = []; sel.clear(); renderNetwork(true); };
+$('#logout').onclick = () => { db.loggedIn = false; save(); show('login'); };
+
+/* ================= modals ================= */
+function modal(html, mount){
+  const m = $('#modal');
+  m.innerHTML = `<div class="panel">${html}</div>`;
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) closeModal(); };
+  if (mount) mount(m.querySelector('.panel'));
+}
+function closeModal(){ const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
+const btns = ok => `<div class="btns"><button type="button" data-close>Annuleer</button><button type="button" class="primary" id="ok">${ok}</button></div>`;
+const checks = (ids, labelFn, checked = []) =>
+  `<div class="list">${ids.map(id => `<label class="item check"><input type="checkbox" value="${id}"${checked.includes(id) ? ' checked' : ''}><span>${esc(labelFn(id))}</span></label>`).join('')}</div>`;
+const checkedVals = root => [...root.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value);
+
+function pickProject(ids, cb, fromUser){
+  if (!ids.length) { toast('Geen projecten'); return; }
+  modal(`<h2>Kies een project</h2><div class="list">${ids.map(p => {
+      const c = unread(p, fromUser);
+      return `<button type="button" class="item pickbtn" data-p="${p}"><span>${esc(db.projects[p].name)}</span>${c ? `<b class="badge cnt" style="position:static">${c}</b>` : ''}</button>`;
+    }).join('')}</div><div class="btns"><button type="button" data-close>Annuleer</button></div>`,
+    root => root.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { closeModal(); cb(b.dataset.p); }));
+}
+function addPerson(pid){
+  const p = db.projects[pid];
+  const others = Object.keys(db.users).filter(u => !p.members.includes(u)).sort((a, b) => uname(a).localeCompare(uname(b)));
+  modal(`<h2>Voeg persoon toe aan ${esc(p.name)}</h2>${others.length ? checks(others, uname) : ''}
+    <label class="fld">Nieuwe persoon<input id="mNew" placeholder="Naam"></label>${btns('Toevoegen')}`, root => {
+    root.querySelector('#ok').onclick = () => {
+      const add = checkedVals(root);
+      const nn = root.querySelector('#mNew').value.trim();
+      if (nn) { const id = newId('u'); db.users[id] = {name:nn}; add.push(id); }
+      p.members = uniq([...p.members, ...add]);
+      save(); closeModal(); renderNetwork(true);
+      if (add.length) toast(`${add.length} toegevoegd aan ${p.name}`);
+    };
+  });
+}
+function addProject(uid){
+  const others = Object.keys(db.projects).filter(p => !db.projects[p].members.includes(uid));
+  modal(`<h2>Voeg project toe aan ${esc(uname(uid))}</h2>${others.length ? checks(others, p => db.projects[p].name) : ''}
+    <label class="fld">Nieuw project<input id="mNew" placeholder="Projectnaam"></label>${btns('Toevoegen')}`, root => {
+    root.querySelector('#ok').onclick = () => {
+      checkedVals(root).forEach(p => db.projects[p].members.push(uid));
+      const nn = root.querySelector('#mNew').value.trim();
+      if (nn) db.projects[newId('p')] = {name:nn, members:uniq([db.me, uid])};
+      save(); closeModal(); renderNetwork(true);
+    };
+  });
+}
+function editProject(pid){
+  const p = db.projects[pid], rm = new Set();
+  modal(`<h2>Bewerk project</h2><label class="fld">Naam<input id="mName" value="${esc(p.name)}"></label>
+    <div class="sub">Deelnemers</div><div class="list">${p.members.map(u =>
+      `<div class="item" data-u="${u}"><span>${esc(uname(u))}${u === db.me ? ' (ik)' : ''}</span><button type="button" class="rm">verwijder</button></div>`).join('')}</div>${btns('Opslaan')}`, root => {
+    root.querySelectorAll('.rm').forEach(b => b.onclick = () => {
+      const it = b.closest('.item'), u = it.dataset.u;
+      if (rm.has(u)) { rm.delete(u); it.classList.remove('removed'); b.textContent = 'verwijder'; }
+      else { rm.add(u); it.classList.add('removed'); b.textContent = 'herstel'; }
+    });
+    root.querySelector('#ok').onclick = () => {
+      const v = root.querySelector('#mName').value.trim(); if (v) p.name = v;
+      p.members = p.members.filter(u => !rm.has(u));
+      save(); closeModal(); sel.clear(); renderNetwork(false);
+    };
+  });
+}
+function editPerson(uid){
+  const u = db.users[uid];
+  modal(`<h2>Bewerk persoon</h2><label class="fld">Naam<input id="mName" value="${esc(u.name)}"></label>${btns('Opslaan')}`, root => {
+    root.querySelector('#ok').onclick = () => {
+      const v = root.querySelector('#mName').value.trim(); if (v) u.name = v;
+      save(); closeModal(); renderNetwork(false);
+    };
+  });
+}
+
+/* ================= chat ================= */
+function defaultTo(pid){
+  const members = db.projects[pid].members;
+  const last = db.messages.filter(m => m.project === pid && involvesMe(m)).sort((a, b) => b.ts - a.ts)[0];
+  if (last) { const t = uniq([last.from, ...last.to]).filter(u => u !== db.me && members.includes(u)); if (t.length) return t; }
+  return members.filter(u => u !== db.me);
+}
+function markRead(pid){
+  const ids = new Set();
+  db.messages.forEach(m => { if (m.project === pid && isUnread(m)) { ids.add(m.id); (m.readBy = m.readBy || []).push(db.me); } });
+  if (ids.size) save();
+  return ids;
+}
+function openChat(pid, to){
+  if (!db.projects[pid].members.includes(db.me)) { toast(`Je neemt geen deel aan ${db.projects[pid].name}`); return; }
+  chat = {project:pid, to:(to && to.length) ? to.filter(u => u !== db.me) : defaultTo(pid), img:null, newIds:markRead(pid)};
+  $('#chatTitle').textContent = db.projects[pid].name;
+  $('#text').value = ''; $('#preview').innerHTML = ''; $('#typing').hidden = true;
+  show('chat');
+  renderChat();
+  history.pushState({v:'chat'}, '');
+}
+function closeChat(){ chat = null; sel.clear(); show('network'); }
+
+function renderChat(){
+  const list = $('#msgs');
+  const msgs = db.messages.filter(m => m.project === chat.project && involvesMe(m)).sort((a, b) => a.ts - b.ts);
+  let lastDay = '', html = '';
+  for (const m of msgs) {
+    const d = dayLabel(m.ts);
+    if (d !== lastDay) { html += `<div class="day">${esc(d)}</div>`; lastDay = d; }
+    const mine = m.from === db.me;
+    const bubble = `<div class="bubble${chat.newIds.has(m.id) ? ' new' : ''}">
+        <div class="meta"><span class="time">${hm(m.ts)}</span>${esc(meName(m.from))}<span class="arr">→</span>${esc(m.to.map(meName).join(', '))}</div>
+        ${m.text ? `<div class="text">${esc(m.text)}</div>` : ''}${m.img ? `<img src="${m.img}" alt="foto">` : ''}</div>`;
+    const reply = `<button class="reply" data-reply="${m.id}" aria-label="antwoord aan alle geadresseerden">${ic('reply')}</button>`;
+    html += `<div class="row ${mine ? 'mine' : 'theirs'}">${mine ? reply + bubble : bubble + reply}</div>`;
+  }
+  list.innerHTML = html || '<div class="day">Nog geen berichten</div>';
+  updateToLine();
+  list.scrollTop = list.scrollHeight;
+}
+function updateToLine(){
+  const names = chat.to.map(uname).join(', ');
+  $('#toLine').innerHTML = `<span>Me</span><span>→</span><span class="names">${names ? esc(names) : '<i>kies ontvangers</i>'}</span>${ic('edit')}`;
+}
+$('#msgs').addEventListener('click', e => {
+  const r = e.target.closest('[data-reply]');
+  if (r) {
+    const m = db.messages.find(x => x.id === r.dataset.reply);
+    const members = db.projects[chat.project].members;
+    chat.to = uniq([m.from, ...m.to]).filter(u => u !== db.me && members.includes(u));
+    updateToLine(); $('#text').focus();
+    toast('Antwoord aan: ' + chat.to.map(uname).join(', '));
+    return;
+  }
+  const img = e.target.closest('.bubble img');
+  if (img) modal(`<div class="viewer"><img src="${img.src}" alt=""></div><div class="btns"><button type="button" data-close>Sluit</button></div>`);
+});
+$('#toLine').onclick = () => {
+  const cand = db.projects[chat.project].members.filter(u => u !== db.me);
+  modal(`<h2>Ontvangers</h2>${checks(cand, uname, chat.to)}${btns('OK')}`, root => {
+    root.querySelector('#ok').onclick = () => { chat.to = checkedVals(root); updateToLine(); closeModal(); };
+  });
+};
+$('#chatBack').onclick = () => history.back();
+
+const ta = $('#text');
+ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; });
+ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
+
+$('#camBtn').onclick = () => $('#file').click();
+$('#file').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try { chat.img = await shrinkImage(f); showPreview(); } catch(err) { toast('Kon foto niet laden'); }
+};
+function shrinkImage(file){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 900 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.75));
+    };
+    img.onerror = rej; img.src = url;
+  });
+}
+function showPreview(){
+  $('#preview').innerHTML = chat.img ? `<div class="pv"><img src="${chat.img}" alt=""><button type="button" aria-label="verwijder foto">${ic('close')}</button></div>` : '';
+  const b = $('#preview button'); if (b) b.onclick = () => { chat.img = null; showPreview(); };
+}
+$('#sendBtn').onclick = send;
+function send(){
+  const text = ta.value.trim();
+  if (!text && !chat.img) return;
+  if (!chat.to.length) { toast('Kies eerst ontvangers'); $('#toLine').click(); return; }
+  const m = {id:newId('m'), project:chat.project, from:db.me, to:[...chat.to], text, ts:Date.now(), readBy:[db.me]};
+  if (chat.img) m.img = chat.img;
+  db.messages.push(m); save();
+  ta.value = ''; ta.style.height = ''; chat.img = null; showPreview();
+  renderChat();
+  if (db.simulate) simulateReply(m);
+}
+
+/* ---- simulated replies so you can feel the flow on one phone ---- */
+const CANNED = ['Prima, dank je!', 'Goed idee, ik kijk er morgen naar.', 'Kunnen we dit donderdag bespreken?',
+  'Helemaal mee eens 👍', 'Ik bel je straks even.', 'Top, zet ik in de agenda.', 'Hm, daar moet ik even over nadenken.'];
+function simulateReply(sent){
+  const who = pick(sent.to), pid = sent.project;
+  const wait = 2500 + Math.random() * 3000;
+  setTimeout(() => { if (chat && chat.project === pid) { $('#typing').textContent = `${uname(who)} typt…`; $('#typing').hidden = false; } }, 900);
+  setTimeout(() => {
+    $('#typing').hidden = true;
+    if (!db.projects[pid] || !db.users[who]) return;
+    const m = {id:newId('m'), project:pid, from:who, to:uniq([db.me, ...sent.to.filter(u => u !== who)]), text:pick(CANNED), ts:Date.now(), readBy:[who]};
+    const open = chat && chat.project === pid && !document.hidden;
+    if (open) m.readBy.push(db.me);
+    db.messages.push(m); save();
+    if (open) renderChat();
+    else {
+      toast(`Nieuw bericht van ${uname(who)} in ${db.projects[pid].name}`);
+      if (!$('#network').hidden) renderNetwork(false);
+    }
+  }, wait);
+}
+
+/* ================= login ================= */
+$('#loginForm').onsubmit = e => {
+  e.preventDefault();
+  db.loggedIn = true; save();
+  center = {type:'user', id:db.me}; hist = []; sel.clear();
+  show('network');
+};
+$('#forgot').onclick = $('#newUser').onclick = () => toast('Niet beschikbaar in dit prototype');
+$('#simToggle').checked = db.simulate !== false;
+$('#simToggle').onchange = e => { db.simulate = e.target.checked; save(); };
+$('#reset').onclick = () => {
+  if (!confirm('Alle demogegevens terugzetten?')) return;
+  db = seed(); save(); $('#simToggle').checked = true; toast('Demogegevens teruggezet');
+};
+
+/* ================= navigation & viewport ================= */
+window.addEventListener('popstate', () => {
+  if (!$('#modal').hidden) { closeModal(); return; }
+  if (chat) closeChat();
+  else if (!$('#network').hidden && hist.length) goBack();
+});
+function fitViewport(){
+  const vv = window.visualViewport; if (!vv) return;
+  const r = document.documentElement.style;
+  r.setProperty('--app-h', vv.height + 'px');
+  r.setProperty('--app-top', vv.offsetTop + 'px');
+  if (chat) { const l = $('#msgs'); l.scrollTop = l.scrollHeight; }
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', fitViewport); visualViewport.addEventListener('scroll', fitViewport); }
+fitViewport();
+let rT, lastW = innerWidth;
+addEventListener('resize', () => {
+  clearTimeout(rT);
+  rT = setTimeout(() => { if (!$('#network').hidden && Math.abs(innerWidth - lastW) > 0) { lastW = innerWidth; renderNetwork(false); } else if (!$('#network').hidden) renderNetwork(false); }, 150);
+});
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+show(db.loggedIn ? 'network' : 'login');
+</script>
+</body>
+</html>
